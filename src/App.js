@@ -1,79 +1,143 @@
-import {useEffect, useState} from "react";
+import { useEffect, useState } from "react";
 import "./App.css";
 import axios from "axios";
-
-const BACKEND_URL = "http://10.65.132.54:3000";
+const BACKEND_URL = "https://api.todoist.com/rest/v1/tasks/";
 
 /*
-* Plan:
-*   1. Define backend url
-*   2. Get items and show them +
-*   3. Toggle item done +
-*   4. Handle item add +
-*   5. Delete +
-*   6. Filter
-*
-* */
+ * Plan:
+ *   1. Define backend url
+ *   2. Get items and show them +
+ *   3. Toggle item done +
+ *   4. Handle item add +
+ *   5. Delete +
+ *   6. Filter
+ *
+ * */
 
 function App() {
   const [itemToAdd, setItemToAdd] = useState("");
   const [items, setItems] = useState([]);
   const [searchValue, setSearchValue] = useState("");
+  const [completedItems, setCompletedItems] = useState([]);
 
   const handleChangeItem = (event) => {
     setItemToAdd(event.target.value);
   };
 
   const handleAddItem = () => {
-    axios.post(`${BACKEND_URL}/todos`, {
-        label:itemToAdd,
-        done: false
-    }).then((response) => {
-        setItems([ ...items, response.data])
-    })
+    axios
+      .post(
+        `${BACKEND_URL}`,
+        {
+          content: itemToAdd,
+          done: false,
+        },
+        {
+          headers: {
+            Authorization: "Bearer 952d05d88d20fde23ffc9a57f11aad3f2bb05df5",
+          },
+        }
+      )
+      .then((response) => {
+        setItems([...items, response.data]);
+      });
     setItemToAdd("");
   };
 
-
-  const toggleItemDone = ({ id, done }) => {
-      axios.put(`${BACKEND_URL}/todos/${id}`, {
-          done: !done
-      }).then((response) => {
-          setItems(items.map((item) => {
-              if (item.id === id) {
+  const toggleItemDone = (item) => {
+    const { id, completed } = item;
+    if (item.completed_date) {
+      axios
+          .post(`${BACKEND_URL}${item.task_id}/reopen`, {}, {
+            headers: {
+              Authorization: "Bearer 952d05d88d20fde23ffc9a57f11aad3f2bb05df5",
+            },
+          }
+          )
+          .then((response) => {
+            setItems(
+              items.map((item) => {
+                if (item.id === id) {
                   return {
-                      ...item,
-                      done: !done
-                  }
-              }
-              return item
-          }))
-
-      })
-  };
+                    ...item,
+                    completed: !completed,
+                  };
+                }
+                return item;
+              })
+            );
+          });
+        
+    } else {
+      axios
+      .post(
+        `${BACKEND_URL}${id}/close`,
+        {
+          completed: !completed,
+        },
+        {
+          headers: {
+            Authorization: "Bearer 952d05d88d20fde23ffc9a57f11aad3f2bb05df5",
+          },
+        }
+      )
+      .then((response) => {
+        setCompletedItems(
+          completedItems.map((item) => {
+            if (item.id === id) {
+              return {
+                ...item,
+                completed: !completed,
+              };
+            }
+            return item;
+          })
+        );
+      
+    });
+  }
+};
 
   // N => map => N
-    // N => filter => 0...N
+  // N => filter => 0...N
   const handleItemDelete = (id) => {
-      axios.delete(`${BACKEND_URL}/todos/${id}`).then((response) => {
-          const deletedItem = response.data;
-          console.log('Было:',items)
-          const newItems = items.filter((item) => {
-              return deletedItem.id !== item.id
-          })
-          console.log('Осталось:',newItems)
-          setItems(newItems)
-      })
+    axios.delete(`${BACKEND_URL}${id}`).then((response) => {
+      const deletedItem = response.data;
+      console.log("Было:", items);
+      const newItems = items.filter((item) => {
+        return deletedItem.id !== item.id;
+      });
+      console.log("Осталось:", newItems);
+      // setItems((newItems) => newItems.filter((item) => item.id !== id));
+      setItems(newItems);
+    });
   };
 
   useEffect(() => {
-      console.log(searchValue)
-      axios.get(`${BACKEND_URL}/todos/?filter=${searchValue}`).then((response) => {
-          setItems(response.data);
+    // console.log(searchValue)
+    axios
+      .get("https://api.todoist.com/sync/v8/completed/get_all", {
+        headers: {
+          Authorization: "Bearer 952d05d88d20fde23ffc9a57f11aad3f2bb05df5",
+        },
       })
-  }, [searchValue])
+      .then((response) => {
+        setCompletedItems(response.data.items);
+      });
+  }, []);
 
-
+  useEffect(() => {
+    // console.log(searchValue)
+    axios
+      .get("https://api.todoist.com/rest/v1/tasks", {
+        headers: {
+          Authorization: "Bearer 952d05d88d20fde23ffc9a57f11aad3f2bb05df5",
+        },
+      })
+      .then((response) => {
+        setItems(response.data);
+      });
+  }, []);
 
   return (
     <div className="todo-app">
@@ -94,6 +158,9 @@ function App() {
       </div>
 
       {/* List-group */}
+      <div>
+        <b id="active">Active tasks</b>
+      </div>
       <ul className="list-group todo-list">
         {items.length > 0 ? (
           items.map((item) => (
@@ -103,7 +170,7 @@ function App() {
                   className="todo-list-item-label"
                   onClick={() => toggleItemDone(item)}
                 >
-                  {item.label}
+                  {item.content}
                 </span>
 
                 <button
@@ -125,6 +192,43 @@ function App() {
           ))
         ) : (
           <div>No todos🤤</div>
+        )}
+      </ul>
+
+      <div>
+        <b id="active">Completed tasks</b>
+      </div>
+      <ul className="list-group todo-list">
+        {completedItems.length > 0 ? (
+          completedItems.map((item) => (
+            <li key={item.id} className="list-group-item">
+              <span className={`todo-list-item${item.done ? " done" : ""}`}>
+                <span
+                  className="todo-list-item-label"
+                  onClick={() => toggleItemDone(item)}
+                >
+                  {item.content}
+                </span>
+
+                <button
+                  type="button"
+                  className="btn btn-outline-success btn-sm float-right"
+                >
+                  <i className="fa fa-exclamation" />
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-outline-danger btn-sm float-right"
+                  onClick={() => handleItemDelete(item.id)}
+                >
+                  <i className="fa fa-trash-o" />
+                </button>
+              </span>
+            </li>
+          ))
+        ) : (
+          <div>No completed todos🤤</div>
         )}
       </ul>
 
